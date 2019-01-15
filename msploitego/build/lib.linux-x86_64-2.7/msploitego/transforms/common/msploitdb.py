@@ -1,4 +1,4 @@
-#/usr/bin/env python
+#!/usr/bin/env python
 
 __all__ = [
     'MetasploitXML',
@@ -6,79 +6,97 @@ __all__ = [
     'Mservice',
     'Mvuln',
     'Mnote',
-    'Mwebsites'
+    'Mwebsite',
+    'Mwebvuln',
+    'Mvulnref',
+    'Mwebpage'
 ]
+__author__ = 'Marc Gurreri'
+__copyright__ = 'Copyright 2018, msploitego Project'
+__credits__ = []
+
+__license__ = 'GPLv3'
+__version__ = '0.1'
+__maintainer__ = 'Marc Gurreri'
+__email__ = 'marcgurreri@gmail.com'
+__status__ = 'Development'
 
 import xml.etree.ElementTree as ET
 from pprint import pprint
 
-from canari.maltego.entities import File
+from corelib import XMLElement
 
-from msploitego.src.msploitego.transforms.common.corelib import Melement
-from msploitego.src.msploitego.transforms.common.entities import Host
+#TODO:make exclusively for MetasploitDB, create derived entity
 
-class MetasploitXML:
+class MetasploitXML(XMLElement):
 
-    def __init__(self, f):
-        if isinstance(f, File):
-            _root = ET.parse(f.value).getroot()
-        else:
-            _root = ET.parse(f).getroot()
-        self.hosts = self._getgen(_root.find("hosts"), Mhost)
-        self.services = self._getgen(_root.find("services"), Mservice)
-        self.websites = self._getgen(_root.find("web_sites"), Mwebsites)
-        self.webpages = self._getgen(_root.find("web_pages"), Mwebpages)
-        self.webforms = self._getgen(_root.find("web_forms"), Mwebforms)
-        self.webvulns = self._getgen(_root.find("web_vulns"), Mwebvulns)
-        try:
-            _root.remove(_root.find("module_details"))
-            _root.remove(_root.find("events"))
-        except ValueError:
-            print "no module details or events to strip"
+    def __init__(self, fn):
+        _root = ET.parse(fn).getroot()
+        ignore = ["web_sites","web_pages","web_forms"]
+        gentags = {"hosts": Mhost, "services": Mservice, "web_vulns": Mwebvuln}
+        super(MetasploitXML, self).__init__(list(_root), gentags, ignore)
+        self.websites = []
+        self.webpages = []
+        self.webforms = []
+        self.webvulns = []
+        for sites in _root.iter("web_sites"):
+            for site in list(sites):
+                self.websites.append(Mwebsite(site))
+        for pages in _root.iter("web_pages"):
+            for page in list(pages):
+                self.webpages.append(Mwebpage(page))
+        for forms in _root.iter("web_forms"):
+            for form in list(forms):
+                self.webforms.append(Mwebform(form))
+        for vulns in _root.iter("web_vulns"):
+            for vuln in list(vulns):
+                self.webvulns.append(Mwebvuln(vuln))
 
-    def _getgen(self,elem,cls):
-        for e in elem:
-            yield cls(e)
+    def gethost(self,ip):
+        for host in self.hosts:
+            if host.getVal("address") == ip:
+                for form in self.webforms:
+                    if form.host == ip:
+                        host.addwebform(form)
+                for page in self.webpages:
+                    if page.host == ip:
+                        host.addwebpage(page)
+                for site in self.websites:
+                    if site.host == ip:
+                        host.addwebsite(site)
+                return host
 
-class Mhost:
+class Mhost(XMLElement):
     def __init__(self, elem):
-        self.services = []
-        self.notes = []
-        self.vulns = []
-        self._dict = {}
-        for item in elem:
-            if item.tag == "services":
-                self.services = self._getgen(item, Mservice)
-            elif item.tag == "notes":
-                self.notes = self._getgen(item, Mnote)
-            elif item.tag == "vulns":
-                self.vulns = self._getgen(item, Mvuln)
-            elif item.text and item.text.strip():
-                setattr(self, item.tag, item.text)
-                self._dict.update({item.tag:item.text})
+        gentags = {"services": Mservice, "notes": Mnote, "vulns": Mvuln}
+        super(Mhost, self).__init__(elem, gentags)
+        self.webforms = []
+        self.webpages = []
+        self.websites = []
+        self.webvulns = []
 
     def __iter__(self):
         for tag, value in self._dict.items():
             yield [tag,value]
 
-    def _getgen(self,node,cls):
-        for n in node:
-            yield cls(n)
+    def addwebform(self,wf):
+        self.webforms.append(wf)
+
+    def addwebpage(self,wp):
+        self.webpages.append(wp)
+
+    def addwebsite(self, ws):
+        self.websites.append(ws)
+
+    def addwebvuln(self, wv):
+        self.webvulns.append(wv)
 
     def getOpenServices(self):
         for service in self.services:
             if service.isopen():
                 yield service
 
-    def gettags(self):
-        return self._dict.keys()
-
-    def tomaltego(self):
-        h = Host()
-        h.transform(self)
-        return h
-
-class Mservice(Melement):
+class Mservice(XMLElement):
     def __init__(self, elem):
         super(Mservice, self).__init__(elem)
 
@@ -87,49 +105,32 @@ class Mservice(Melement):
             return True
         return False
 
-class Mvuln(Melement):
+class Mvuln(XMLElement):
     def __init__(self,elem):
-        super(Mvuln, self).__init__(elem)
+        super(Mvuln, self).__init__(elem, {"refs":Mvulnref})
 
-class Mnote(Melement):
+class Mnote(XMLElement):
     def __init__(self,elem):
         super(Mnote, self).__init__(elem)
 
-class Mwebsites(Melement):
+class Mvulnref(XMLElement):
     def __init__(self,elem):
-        super(Mwebsites, self).__init__(elem)
+        super(Mvulnref, self).__init__(elem)
 
-class Mwebpages(Melement):
+class Mwebsite(XMLElement):
     def __init__(self,elem):
-        super(Mwebpages, self).__init__(elem)
+        super(Mwebsite, self).__init__(elem)
 
-class Mwebforms(Melement):
+class Mwebpage(XMLElement):
     def __init__(self,elem):
-        super(Mwebforms, self).__init__(elem)
+        super(Mwebpage, self).__init__(elem)
 
-class Mwebvulns(Melement):
+class Mwebform(XMLElement):
     def __init__(self,elem):
-        super(Mwebvulns, self).__init__(elem)
+        super(Mwebform, self).__init__(elem)
 
-# mdb = MetasploitXML("/root/data/scan/hthebox/msploitdb20180502.xml")
-# print "class loaded"
-# hosts = []
-# for h in mdb.hosts:
-#     pprint(h)
-# website = mdb.websites.next()
-# webpage = mdb.webpages.next()
-# webform = mdb.webforms.next()
-# vuln = mdb.webvulns.next()
+class Mwebvuln(XMLElement):
+    def __init__(self,elem):
+        super(Mwebvuln, self).__init__(elem)
 
-# print "subclasses loaded"
-# hosts = []
-# for h in mdb.hosts:
-#     pprint(h)
-#     vulns = [x for x in h.vulns]
-#     print "got vulns"
-#     for s in h.services:
-#         pprint(s)
-#     for n in h.notes:
-#         pprint(n)
-#     print "got hosts"
 

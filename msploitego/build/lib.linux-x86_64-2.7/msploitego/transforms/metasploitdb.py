@@ -1,48 +1,36 @@
 from pprint import pprint
 
-# from msploitego.src.msploitego.transforms.common.entities import Host
-from canari.maltego.entities import IPv4Address
-
-from msploitego.src.msploitego.transforms.common.msploitdb import MetasploitXML
+from common.msploitdb import MetasploitXML
+from common.MaltegoTransform import *
+import sys
 
 __author__ = 'Marc Gurreri'
 __copyright__ = 'Copyright 2018, msploitego Project'
 __credits__ = []
-
 __license__ = 'GPLv3'
 __version__ = '0.1'
 __maintainer__ = 'Marc Gurreri'
 __email__ = 'marcgurreri@gmail.com'
 __status__ = 'Development'
 
-from common.MaltegoTransform import *
-import sys
+def dotransform(args):
+    entitytags = ["name", "address", "servicecount", "osname", "state", "mac","vulncount","purpose", "osflavor",
+                  "osfamily", "notecount"]
+    mt = MaltegoTransform()
+    # mt.debug(pprint(args))
+    mt.parseArguments(args)
+    fn = mt.getVar("description")
+    mdb = MetasploitXML(fn)
+    for host in mdb.hosts:
+        hostentity = mt.addEntity("maltego.IPv4Address", host.address)
+        hostentity.setValue(host.address)
+        hostentity.addAdditionalFields("fromfile", "Source File", False, fn)
+        tags = host.getTags()
+        for etag in entitytags:
+            if etag in tags:
+                hostentity.addAdditionalFields(etag, etag, False, host.getVal(etag))
+    mt.returnOutput()
+    
 
-mt = MaltegoTransform()
-mt.debug(pprint(sys.argv))
-mt.parseArguments(sys.argv)
-pprint(mt.debug(mt.value))
-pprint(mt.debug(mt.entities))
-pprint(mt.debug(mt.values))
-fn = mt.getVar("metasploit.session")
-pprint(fn)
-mdb = MetasploitXML(fn)
-for host in mdb.hosts:
-    ipv4 = IPv4Address(host.address)
-    mt.addUIMessage("found host {}".format(ipv4))
-    mt.addEntity("sploitego.IPv4Address", ipv4)
-
-
-mt.returnOutput()
-
-"""
-    # The transform input entity type.
-    input_type = File
-
-    def do_transform(self, request, response, config):
-        fname = request.entity
-        mdb = MetasploitXML(fname.value)
-        for h in mdb.hosts:
-            response += h.tomaltego()
-        return response
-"""
+dotransform(sys.argv)
+# dotransform(args)
